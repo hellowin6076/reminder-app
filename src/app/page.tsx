@@ -16,7 +16,6 @@ type Reminder = {
 
 type View = 'list' | 'add' | 'calendar'
 
-// ── 날짜 유틸 ──────────────────────────────────────────
 function daysUntil(r: Reminder): number {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -102,6 +101,139 @@ function CalendarView({ reminders }: { reminders: Reminder[] }) {
   )
 }
 
+// ── 인폴드 수정 폼 ───────────────────────────────────────
+function EditForm({
+  reminder,
+  onSave,
+  onCancel,
+}: {
+  reminder: Reminder
+  onSave: (updated: Reminder) => void
+  onCancel: () => void
+}) {
+  const [form, setForm] = useState({
+    title: reminder.title,
+    type: reminder.type,
+    importance: reminder.importance,
+    month: reminder.month?.toString() || '',
+    day: reminder.day?.toString() || '',
+    event_date: reminder.event_date || '',
+    memo: reminder.memo || '',
+  })
+  const [loading, setLoading] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    const body: any = {
+      id: reminder.id,
+      title: form.title,
+      type: form.type,
+      importance: form.importance,
+      memo: form.memo || null,
+    }
+    if (form.type === 'anniversary') {
+      body.month = parseInt(form.month)
+      body.day = parseInt(form.day)
+      body.event_date = null
+    } else {
+      body.event_date = form.event_date
+      body.month = null
+      body.day = null
+    }
+    const res = await fetch('/api/reminders', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const updated = await res.json()
+    setLoading(false)
+    onSave(updated)
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-3 pt-3 border-t border-gray-100 space-y-3">
+      <input
+        required
+        placeholder="제목"
+        value={form.title}
+        onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
+      />
+
+      <div className="flex gap-2">
+        {(['anniversary', 'event'] as const).map(t => (
+          <button
+            key={t} type="button"
+            onClick={() => setForm(f => ({ ...f, type: t }))}
+            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-colors ${form.type === t ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500'}`}
+          >
+            {t === 'anniversary' ? '🔁 기념일' : '📅 일정'}
+          </button>
+        ))}
+      </div>
+
+      {form.type === 'anniversary' ? (
+        <div className="flex gap-2">
+          <input
+            required type="number" min="1" max="12" placeholder="월"
+            value={form.month}
+            onChange={e => setForm(f => ({ ...f, month: e.target.value }))}
+            className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+          <input
+            required type="number" min="1" max="31" placeholder="일"
+            value={form.day}
+            onChange={e => setForm(f => ({ ...f, day: e.target.value }))}
+            className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+      ) : (
+        <input
+          required type="date"
+          value={form.event_date}
+          onChange={e => setForm(f => ({ ...f, event_date: e.target.value }))}
+          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
+        />
+      )}
+
+      <div className="flex gap-2">
+        {(['normal', 'high'] as const).map(imp => (
+          <button
+            key={imp} type="button"
+            onClick={() => setForm(f => ({ ...f, importance: imp }))}
+            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-colors ${form.importance === imp ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500'}`}
+          >
+            {imp === 'high' ? '⭐ 중요' : '일반'}
+          </button>
+        ))}
+      </div>
+
+      <input
+        placeholder="메모 (선택)"
+        value={form.memo}
+        onChange={e => setForm(f => ({ ...f, memo: e.target.value }))}
+        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
+      />
+
+      <div className="flex gap-2">
+        <button
+          type="button" onClick={onCancel}
+          className="flex-1 py-2 rounded-xl text-sm font-medium bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors"
+        >
+          취소
+        </button>
+        <button
+          type="submit" disabled={loading}
+          className="flex-1 py-2 rounded-xl text-sm font-medium bg-indigo-500 text-white hover:bg-indigo-600 transition-colors disabled:opacity-50"
+        >
+          {loading ? '저장 중...' : '저장'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
 // ── 메인 ────────────────────────────────────────────────
 export default function Home() {
   const [authed, setAuthed] = useState(false)
@@ -111,8 +243,8 @@ export default function Home() {
   const [view, setView] = useState<View>('list')
   const [filterType, setFilterType] = useState<'all' | 'anniversary' | 'event'>('all')
   const [loading, setLoading] = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  // Add form state
   const [form, setForm] = useState({
     title: '', type: 'anniversary', importance: 'normal',
     month: '', day: '', event_date: '', memo: ''
@@ -120,10 +252,7 @@ export default function Home() {
 
   const fetchReminders = useCallback(async () => {
     const res = await fetch('/api/reminders')
-    if (res.ok) {
-      const data = await res.json()
-      setReminders(data)
-    }
+    if (res.ok) setReminders(await res.json())
   }, [])
 
   useEffect(() => {
@@ -149,10 +278,8 @@ export default function Home() {
     e.preventDefault()
     setLoading(true)
     const body: any = {
-      title: form.title,
-      type: form.type,
-      importance: form.importance,
-      memo: form.memo || null,
+      title: form.title, type: form.type,
+      importance: form.importance, memo: form.memo || null,
     }
     if (form.type === 'anniversary') {
       body.month = parseInt(form.month)
@@ -181,11 +308,15 @@ export default function Home() {
     fetchReminders()
   }
 
+  function handleSaved(updated: Reminder) {
+    setReminders(prev => prev.map(r => r.id === updated.id ? updated : r))
+    setExpandedId(null)
+  }
+
   const filtered = reminders
     .filter(r => filterType === 'all' || r.type === filterType)
     .sort((a, b) => daysUntil(a) - daysUntil(b))
 
-  // ── 로그인 화면 ──
   if (!authed) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -197,18 +328,14 @@ export default function Home() {
           </div>
           <form onSubmit={handleLogin} className="bg-white rounded-2xl shadow-sm p-6 space-y-4">
             <input
-              type="password"
-              placeholder="비밀번호"
+              type="password" placeholder="비밀번호"
               value={password}
               onChange={e => setPassword(e.target.value)}
               className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
             />
             {authError && <p className="text-red-500 text-xs">{authError}</p>}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-indigo-500 text-white rounded-xl py-3 text-sm font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50"
-            >
+            <button type="submit" disabled={loading}
+              className="w-full bg-indigo-500 text-white rounded-xl py-3 text-sm font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50">
               {loading ? '...' : '입장'}
             </button>
           </form>
@@ -217,12 +344,10 @@ export default function Home() {
     )
   }
 
-  // ── 메인 화면 ──
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-lg mx-auto px-4 py-8">
 
-        {/* 헤더 */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">🔔 Reminder</h1>
@@ -236,14 +361,10 @@ export default function Home() {
           </button>
         </div>
 
-        {/* 탭 */}
         <div className="flex gap-2 mb-6">
           {(['list', 'calendar'] as const).map(v => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${view === v ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
-            >
+            <button key={v} onClick={() => setView(v)}
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${view === v ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
               {v === 'list' ? '목록' : '캘린더'}
             </button>
           ))}
@@ -253,74 +374,44 @@ export default function Home() {
         {view === 'add' && (
           <form onSubmit={handleAdd} className="bg-white rounded-2xl shadow-sm p-6 mb-6 space-y-4">
             <h2 className="font-semibold text-gray-700">새 리마인더</h2>
-
-            <input
-              required
-              placeholder="제목"
-              value={form.title}
+            <input required placeholder="제목" value={form.title}
               onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
-            />
-
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300" />
             <div className="flex gap-2">
               {(['anniversary', 'event'] as const).map(t => (
-                <button
-                  key={t} type="button"
-                  onClick={() => setForm(f => ({ ...f, type: t }))}
-                  className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${form.type === t ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500'}`}
-                >
+                <button key={t} type="button" onClick={() => setForm(f => ({ ...f, type: t }))}
+                  className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${form.type === t ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500'}`}>
                   {t === 'anniversary' ? '🔁 기념일' : '📅 일정'}
                 </button>
               ))}
             </div>
-
             {form.type === 'anniversary' ? (
               <div className="flex gap-2">
-                <input
-                  required type="number" min="1" max="12" placeholder="월"
-                  value={form.month}
+                <input required type="number" min="1" max="12" placeholder="월" value={form.month}
                   onChange={e => setForm(f => ({ ...f, month: e.target.value }))}
-                  className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
-                />
-                <input
-                  required type="number" min="1" max="31" placeholder="일"
-                  value={form.day}
+                  className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300" />
+                <input required type="number" min="1" max="31" placeholder="일" value={form.day}
                   onChange={e => setForm(f => ({ ...f, day: e.target.value }))}
-                  className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
-                />
+                  className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300" />
               </div>
             ) : (
-              <input
-                required type="date"
-                value={form.event_date}
+              <input required type="date" value={form.event_date}
                 onChange={e => setForm(f => ({ ...f, event_date: e.target.value }))}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
-              />
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300" />
             )}
-
             <div className="flex gap-2">
               {(['normal', 'high'] as const).map(imp => (
-                <button
-                  key={imp} type="button"
-                  onClick={() => setForm(f => ({ ...f, importance: imp }))}
-                  className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${form.importance === imp ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500'}`}
-                >
+                <button key={imp} type="button" onClick={() => setForm(f => ({ ...f, importance: imp }))}
+                  className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${form.importance === imp ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500'}`}>
                   {imp === 'high' ? '⭐ 중요' : '일반'}
                 </button>
               ))}
             </div>
-
-            <input
-              placeholder="메모 (선택)"
-              value={form.memo}
+            <input placeholder="메모 (선택)" value={form.memo}
               onChange={e => setForm(f => ({ ...f, memo: e.target.value }))}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
-            />
-
-            <button
-              type="submit" disabled={loading}
-              className="w-full bg-indigo-500 text-white rounded-xl py-3 text-sm font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50"
-            >
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300" />
+            <button type="submit" disabled={loading}
+              className="w-full bg-indigo-500 text-white rounded-xl py-3 text-sm font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50">
               {loading ? '등록 중...' : '등록'}
             </button>
           </form>
@@ -331,11 +422,8 @@ export default function Home() {
           <>
             <div className="flex gap-2 mb-4">
               {(['all', 'anniversary', 'event'] as const).map(t => (
-                <button
-                  key={t}
-                  onClick={() => setFilterType(t)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterType === t ? 'bg-indigo-500 text-white' : 'bg-white text-gray-400 shadow-sm'}`}
-                >
+                <button key={t} onClick={() => setFilterType(t)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterType === t ? 'bg-indigo-500 text-white' : 'bg-white text-gray-400 shadow-sm'}`}>
                   {t === 'all' ? '전체' : t === 'anniversary' ? '🔁 기념일' : '📅 일정'}
                 </button>
               ))}
@@ -347,25 +435,42 @@ export default function Home() {
               )}
               {filtered.map(r => {
                 const d = daysUntil(r)
+                const isExpanded = expandedId === r.id
                 return (
-                  <div key={r.id} className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0 ${d === 0 ? 'bg-rose-100 text-rose-600' : d <= 7 ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-500'}`}>
-                      {daysLabel(d)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-medium text-gray-800 text-sm truncate">{r.title}</span>
-                        {r.importance === 'high' && <span className="text-xs">⭐</span>}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-0.5">{dateLabel(r)}</div>
-                      {r.memo && <div className="text-xs text-gray-400 truncate mt-0.5">📝 {r.memo}</div>}
-                    </div>
-                    <button
-                      onClick={() => handleDelete(r.id)}
-                      className="text-gray-300 hover:text-red-400 transition-colors text-lg flex-shrink-0"
+                  <div key={r.id} className="bg-white rounded-2xl shadow-sm p-4">
+                    <div
+                      className="flex items-center gap-4 cursor-pointer"
+                      onClick={() => setExpandedId(isExpanded ? null : r.id)}
                     >
-                      ×
-                    </button>
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0 ${d === 0 ? 'bg-rose-100 text-rose-600' : d <= 7 ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-500'}`}>
+                        {daysLabel(d)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-gray-800 text-sm truncate">{r.title}</span>
+                          {r.importance === 'high' && <span className="text-xs">⭐</span>}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-0.5">{dateLabel(r)}</div>
+                        {r.memo && <div className="text-xs text-gray-400 truncate mt-0.5">📝 {r.memo}</div>}
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-gray-300 text-xs">{isExpanded ? '▲' : '▼'}</span>
+                        <button
+                          onClick={e => { e.stopPropagation(); handleDelete(r.id) }}
+                          className="text-gray-300 hover:text-red-400 transition-colors text-lg"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <EditForm
+                        reminder={r}
+                        onSave={handleSaved}
+                        onCancel={() => setExpandedId(null)}
+                      />
+                    )}
                   </div>
                 )
               })}

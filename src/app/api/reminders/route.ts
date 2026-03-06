@@ -23,7 +23,6 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
 
-  // 웹에서 등록 시 첫 번째 유저 사용 (개인용)
   const { data: user } = await supabase
     .from('users')
     .select('id')
@@ -42,6 +41,32 @@ export async function POST(req: NextRequest) {
     event_date: body.event_date || null,
     memo: body.memo || null,
   }).select().single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data)
+}
+
+// PATCH /api/reminders
+export async function PATCH(req: NextRequest) {
+  if (!isAuthed(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await req.json()
+  const { id, ...fields } = body
+
+  const { data, error } = await supabase
+    .from('reminders')
+    .update({
+      title: fields.title,
+      type: fields.type,
+      importance: fields.importance,
+      month: fields.month || null,
+      day: fields.day || null,
+      event_date: fields.event_date || null,
+      memo: fields.memo || null,
+    })
+    .eq('id', id)
+    .select()
+    .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
