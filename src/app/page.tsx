@@ -126,6 +126,8 @@ function EditForm({
     day: reminder.day?.toString() || '',
     event_date: reminder.event_date || '',
     memo: reminder.memo || '',
+    due_date: reminder.due_date || '',
+    interval_days: reminder.interval_days?.toString() || '5',
   })
   const [loading, setLoading] = useState(false)
 
@@ -143,10 +145,18 @@ function EditForm({
       body.month = parseInt(form.month)
       body.day = parseInt(form.day)
       body.event_date = null
+      body.due_date = null
+    } else if (form.type === 'todo') {
+      body.due_date = form.due_date || null
+      body.interval_days = parseInt(form.interval_days) || 5
+      body.month = null
+      body.day = null
+      body.event_date = null
     } else {
       body.event_date = form.event_date
       body.month = null
       body.day = null
+      body.due_date = null
     }
     const res = await fetch('/api/reminders', {
       method: 'PATCH',
@@ -168,17 +178,19 @@ function EditForm({
         className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
       />
 
-      <div className="flex gap-2">
-        {(['anniversary', 'event'] as const).map(t => (
-          <button
-            key={t} type="button"
-            onClick={() => setForm(f => ({ ...f, type: t }))}
-            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-colors ${form.type === t ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500'}`}
-          >
-            {t === 'anniversary' ? '🔁 기념일' : '📅 일정'}
-          </button>
-        ))}
-      </div>
+      {form.type !== 'todo' && (
+        <div className="flex gap-2">
+          {(['anniversary', 'event'] as const).map(t => (
+            <button
+              key={t} type="button"
+              onClick={() => setForm(f => ({ ...f, type: t }))}
+              className={`flex-1 py-2 rounded-xl text-xs font-medium transition-colors ${form.type === t ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500'}`}
+            >
+              {t === 'anniversary' ? '🔁 기념일' : '📅 일정'}
+            </button>
+          ))}
+        </div>
+      )}
 
       {form.type === 'anniversary' ? (
         <div className="flex gap-2">
@@ -195,6 +207,25 @@ function EditForm({
             className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
           />
         </div>
+      ) : form.type === 'todo' ? (
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs text-gray-500 mb-1">마감일</p>
+            <input type="date"
+              value={form.due_date}
+              onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1">알림 주기 (일)</p>
+            <input type="number" min="1" placeholder="5"
+              value={form.interval_days}
+              onChange={e => setForm(f => ({ ...f, interval_days: e.target.value }))}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+          </div>
+        </div>
       ) : (
         <input
           required type="date"
@@ -204,17 +235,19 @@ function EditForm({
         />
       )}
 
-      <div className="flex gap-2">
-        {(['normal', 'high'] as const).map(imp => (
-          <button
-            key={imp} type="button"
-            onClick={() => setForm(f => ({ ...f, importance: imp }))}
-            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-colors ${form.importance === imp ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500'}`}
-          >
-            {imp === 'high' ? '⭐ 중요' : '일반'}
-          </button>
-        ))}
-      </div>
+      {form.type !== 'todo' && (
+        <div className="flex gap-2">
+          {(['normal', 'high'] as const).map(imp => (
+            <button
+              key={imp} type="button"
+              onClick={() => setForm(f => ({ ...f, importance: imp }))}
+              className={`flex-1 py-2 rounded-xl text-xs font-medium transition-colors ${form.importance === imp ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500'}`}
+            >
+              {imp === 'high' ? '⭐ 중요' : '일반'}
+            </button>
+          ))}
+        </div>
+      )}
 
       <input
         placeholder="메모 (선택)"
