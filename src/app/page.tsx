@@ -254,7 +254,8 @@ export default function Home() {
 
   const [form, setForm] = useState({
     title: '', type: 'anniversary', importance: 'normal',
-    month: '', day: '', event_date: '', memo: ''
+    month: '', day: '', event_date: '', memo: '',
+    due_date_option: '3months', interval_days: '5'
   })
 
   const fetchReminders = useCallback(async () => {
@@ -293,9 +294,10 @@ export default function Home() {
       body.day = parseInt(form.day)
     } else if (form.type === 'todo') {
       const due = new Date()
-      due.setMonth(due.getMonth() + 3)
+      if (form.due_date_option === '3months') due.setMonth(due.getMonth() + 3)
+      else due.setFullYear(due.getFullYear() + 1)
       body.due_date = due.toISOString().split('T')[0]
-      body.interval_days = 5
+      body.interval_days = parseInt(form.interval_days) || 5
     } else {
       body.event_date = form.event_date
     }
@@ -304,7 +306,7 @@ export default function Home() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
-    setForm({ title: '', type: 'anniversary', importance: 'normal', month: '', day: '', event_date: '', memo: '' })
+    setForm({ title: '', type: 'anniversary', importance: 'normal', month: '', day: '', event_date: '', memo: '', due_date_option: '3months', interval_days: '5' })
     setLoading(false)
     setView('list')
     fetchReminders()
@@ -312,6 +314,16 @@ export default function Home() {
 
   async function handleDelete(id: string) {
     if (!confirm('삭제할까요?')) return
+    await fetch('/api/reminders', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    fetchReminders()
+  }
+
+  async function handleComplete(id: string) {
+    if (!confirm('완료 처리할까요?')) return
     await fetch('/api/reminders', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -407,7 +419,27 @@ export default function Home() {
                   className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300" />
               </div>
             ) : form.type === 'todo' ? (
-              <p className="text-xs text-gray-400 bg-gray-50 rounded-xl px-4 py-3">📅 마감일은 등록일 기준 3달 후로 자동 설정돼요.</p>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs text-gray-500 mb-2">마감일</p>
+                  <div className="flex gap-2">
+                    {([['3months', '3달 후'], ['1year', '1년 후']] as const).map(([val, label]) => (
+                      <button key={val} type="button"
+                        onClick={() => setForm(f => ({ ...f, due_date_option: val }))}
+                        className={`flex-1 py-2 rounded-xl text-xs font-medium transition-colors ${form.due_date_option === val ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-2">알림 주기 (일)</p>
+                  <input type="number" min="1" placeholder="5"
+                    value={form.interval_days}
+                    onChange={e => setForm(f => ({ ...f, interval_days: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+              </div>
             ) : (
               <input required type="date" value={form.event_date}
                 onChange={e => setForm(f => ({ ...f, event_date: e.target.value }))}
@@ -469,6 +501,15 @@ export default function Home() {
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <span className="text-gray-300 text-xs">{isExpanded ? '▲' : '▼'}</span>
+                        {r.type === 'todo' && (
+                          <button
+                            onClick={e => { e.stopPropagation(); handleComplete(r.id) }}
+                            className="text-gray-300 hover:text-green-500 transition-colors text-base"
+                            title="완료"
+                          >
+                            ✓
+                          </button>
+                        )}
                         <button
                           onClick={e => { e.stopPropagation(); handleDelete(r.id) }}
                           className="text-gray-300 hover:text-red-400 transition-colors text-lg"
