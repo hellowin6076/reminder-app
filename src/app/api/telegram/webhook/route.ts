@@ -72,14 +72,14 @@ export async function POST(req: NextRequest) {
   // /list
   if (text === '/list') {
     await setSession(chatId, 'list_select_type', {})
-    await sendMessage(chatId, '어떤 종류를 볼까요?\n\n1. 기념일\n2. 일정')
+    await sendMessage(chatId, '어떤 종류를 볼까요?\n\n1. 기념일\n2. 일정\n3. 할 일')
     return NextResponse.json({ ok: true })
   }
 
   // /delete
   if (text === '/delete') {
     await setSession(chatId, 'delete_select_type', {})
-    await sendMessage(chatId, '어떤 종류를 삭제할까요?\n\n1. 기념일\n2. 일정')
+    await sendMessage(chatId, '어떤 종류를 삭제할까요?\n\n1. 기념일\n2. 일정\n3. 할 일')
     return NextResponse.json({ ok: true })
   }
 
@@ -207,12 +207,12 @@ export async function POST(req: NextRequest) {
 
   // step: list_select_type
   if (step === 'list_select_type') {
-    if (text !== '1' && text !== '2') {
-      await sendMessage(chatId, '1 또는 2를 입력해주세요.')
+    if (text !== '1' && text !== '2' && text !== '3') {
+      await sendMessage(chatId, '1, 2, 3 중에 입력해주세요.')
       return NextResponse.json({ ok: true })
     }
-    const type = text === '1' ? 'anniversary' : 'event'
-    const typeLabel = text === '1' ? '🔁 기념일' : '📅 일정'
+    const type = text === '1' ? 'anniversary' : text === '2' ? 'event' : 'todo'
+    const typeLabel = text === '1' ? '🔁 기념일' : text === '2' ? '📅 일정' : '✅ 할 일'
 
     const { data: reminders } = await supabase
       .from('reminders')
@@ -230,11 +230,16 @@ export async function POST(req: NextRequest) {
 
     let msg = `${typeLabel} 목록\n\n`
     reminders.forEach((r: any, i: number) => {
-      const dateLabel = type === 'anniversary'
-        ? `매년 ${r.month}월 ${r.day}일`
-        : r.event_date
-      const importanceLabel = r.importance === 'high' ? ' ⭐' : ''
-      msg += `${i + 1}. ${r.title} (${dateLabel})${importanceLabel}\n`
+      if (type === 'anniversary') {
+        const imp = r.importance === 'high' ? ' ⭐' : ''
+        msg += `${i + 1}. ${r.title} (매년 ${r.month}월 ${r.day}일)${imp}\n`
+      } else if (type === 'event') {
+        const imp = r.importance === 'high' ? ' ⭐' : ''
+        msg += `${i + 1}. ${r.title} (${r.event_date})${imp}\n`
+      } else {
+        const due = r.due_date ? ` 마감 ${r.due_date}` : ''
+        msg += `${i + 1}. ${r.title}${due}\n`
+      }
     })
 
     await sendMessage(chatId, msg)
@@ -243,12 +248,12 @@ export async function POST(req: NextRequest) {
 
   // step: delete_select_type
   if (step === 'delete_select_type') {
-    if (text !== '1' && text !== '2') {
-      await sendMessage(chatId, '1 또는 2를 입력해주세요.')
+    if (text !== '1' && text !== '2' && text !== '3') {
+      await sendMessage(chatId, '1, 2, 3 중에 입력해주세요.')
       return NextResponse.json({ ok: true })
     }
-    const type = text === '1' ? 'anniversary' : 'event'
-    const typeLabel = text === '1' ? '🔁 기념일' : '📅 일정'
+    const type = text === '1' ? 'anniversary' : text === '2' ? 'event' : 'todo'
+    const typeLabel = text === '1' ? '🔁 기념일' : text === '2' ? '📅 일정' : '✅ 할 일'
 
     const { data: reminders } = await supabase
       .from('reminders')
@@ -265,11 +270,16 @@ export async function POST(req: NextRequest) {
 
     let msg = `${typeLabel} 목록\n삭제할 번호를 입력해주세요.\n\n`
     reminders.forEach((r: any, i: number) => {
-      const dateLabel = type === 'anniversary'
-        ? `매년 ${r.month}월 ${r.day}일`
-        : r.event_date
-      const importanceLabel = r.importance === 'high' ? ' ⭐' : ''
-      msg += `${i + 1}. ${r.title} (${dateLabel})${importanceLabel}\n`
+      if (type === 'anniversary') {
+        const imp = r.importance === 'high' ? ' ⭐' : ''
+        msg += `${i + 1}. ${r.title} (매년 ${r.month}월 ${r.day}일)${imp}\n`
+      } else if (type === 'event') {
+        const imp = r.importance === 'high' ? ' ⭐' : ''
+        msg += `${i + 1}. ${r.title} (${r.event_date})${imp}\n`
+      } else {
+        const due = r.due_date ? ` 마감 ${r.due_date}` : ''
+        msg += `${i + 1}. ${r.title}${due}\n`
+      }
     })
 
     await setSession(chatId, 'select_delete', {
@@ -347,15 +357,39 @@ export async function POST(req: NextRequest) {
 
   // step: input_title
   if (step === 'input_title') {
-    const nextStep = data.type === 'anniversary' ? 'input_month_day' : data.type === 'todo' ? 'save_todo' : 'input_date'
+    // 할 일은 제목 입력 후 바로 저장
+    if (data.type === 'todo') {
+      const due = new Date()
+      due.setMonth(due.getMonth() + 3)
+      const dueDate = due.toISOString().split('T')[0]
+
+      await supabase.from('reminders').insert({
+        user_id: user.id,
+        title: text,
+        type: 'todo',
+        importance: 'normal',
+        due_date: dueDate,
+        interval_days: 5,
+      })
+
+      await clearSession(chatId)
+      await sendMessage(
+        chatId,
+        `✅ 등록 완료!\n\n` +
+        `📌 ${text} (할 일)\n` +
+        `📅 마감: ${dueDate}\n` +
+        `🔔 5일마다 알림\n\n완료했으면 /done 으로 처리해주세요.`
+      )
+      return NextResponse.json({ ok: true })
+    }
+
+    const nextStep = data.type === 'anniversary' ? 'input_month_day' : 'input_date'
     await setSession(chatId, nextStep, {
       ...data,
       title: text,
     })
     if (data.type === 'anniversary') {
       await sendMessage(chatId, '날짜를 입력해주세요. (MM/DD 형식)\n예: 03/15')
-    } else if (data.type === 'todo') {
-      // 바로 저장
     } else {
       await sendMessage(chatId, '날짜를 입력해주세요. (YYYY/MM/DD 형식)\n예: 2026/05/10')
     }
