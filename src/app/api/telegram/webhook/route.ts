@@ -312,6 +312,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
+  // step: todo_due_action
+  if (step === 'todo_due_action') {
+    if (text !== '1' && text !== '2' && text !== '3') {
+      await sendMessage(chatId, '1, 2, 3 중에 입력해주세요.')
+      return NextResponse.json({ ok: true })
+    }
+
+    const reminderId = data.reminderId
+    const title = data.title
+
+    if (text === '1') {
+      // 완료 → 삭제
+      await supabase.from('reminders').delete().eq('id', reminderId)
+      await clearSession(chatId)
+      await sendMessage(chatId, `🎉 '${title}' 완료! 수고하셨어요.`)
+    } else {
+      // 연장
+      const due = new Date()
+      if (text === '2') due.setMonth(due.getMonth() + 3)
+      else due.setFullYear(due.getFullYear() + 1)
+      const newDueDate = due.toISOString().split('T')[0]
+      const label = text === '2' ? '3달' : '1년'
+
+      await supabase.from('reminders').update({ due_date: newDueDate }).eq('id', reminderId)
+      await clearSession(chatId)
+      await sendMessage(chatId, `📅 '${title}' 마감일을 ${label} 연장했어요.
+새 마감일: ${newDueDate}`)
+    }
+    return NextResponse.json({ ok: true })
+  }
+
   // step: todo_select_due
   if (step === 'todo_select_due') {
     if (text !== '1' && text !== '2') {

@@ -40,6 +40,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, sent: 0 })
   }
 
+  // 세션 upsert 헬퍼
+  async function setSession(chatId: number, step: string, data: object) {
+    await supabase
+      .from('sessions')
+      .upsert({ chat_id: chatId, step, data, updated_at: new Date().toISOString() })
+  }
+
   let sentCount = 0
 
   for (const reminder of reminders) {
@@ -51,6 +58,22 @@ export async function GET(req: NextRequest) {
       const intervalDays = reminder.interval_days || 5
       const lastNotified = reminder.last_notified_at
 
+      // 마감일 당일 → 갱신 여부 묻기
+      if (reminder.due_date) {
+        const daysUntilDue = getDaysUntilDate(reminder.due_date, today)
+
+        if (daysUntilDue === 0) {
+          await setSession(chatId, 'todo_due_action', { reminderId: reminder.id, title: reminder.title })
+          await sendMessage(
+            chatId,
+            `⚠️ 마감일이 됐어요!\n📌 ${reminder.title}\n\n어떻게 할까요?\n1. 완료 (삭제)\n2. 3달 연장\n3. 1년 연장`
+          )
+          await supabase.from('reminders').update({ last_notified_at: todayStr }).eq('id', reminder.id)
+          sentCount++
+          continue
+        }
+      }
+
       // 마지막 알림 이후 interval_days 지났는지 확인
       if (lastNotified) {
         const last = new Date(lastNotified)
@@ -58,7 +81,7 @@ export async function GET(req: NextRequest) {
         if (daysSinceLast < intervalDays) continue
       }
 
-      // 마감일까지 남은 일수
+      // 일반 주기 알림
       let dueMsg = ''
       if (reminder.due_date) {
         const daysUntilDue = getDaysUntilDate(reminder.due_date, today)
@@ -69,17 +92,11 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      const msg =
+      await sendMessage(
+        chatId,
         `⏰ 아직 안 하셨나요?\n📌 ${reminder.title}${dueMsg}\n\n완료했으면 /done 으로 처리해주세요.`
-
-      await sendMessage(chatId, msg)
-
-      // last_notified_at 업데이트
-      await supabase
-        .from('reminders')
-        .update({ last_notified_at: todayStr })
-        .eq('id', reminder.id)
-
+      )
+      await supabase.from('reminders').update({ last_notified_at: todayStr }).eq('id', reminder.id)
       sentCount++
       continue
     }
