@@ -5,12 +5,14 @@ import { useState, useEffect, useCallback } from 'react'
 type Reminder = {
   id: string
   title: string
-  type: 'anniversary' | 'event'
+  type: 'anniversary' | 'event' | 'todo'
   importance: 'high' | 'normal'
   month?: number
   day?: number
   event_date?: string
   memo?: string
+  due_date?: string
+  interval_days?: number
   created_at: string
 }
 
@@ -28,11 +30,16 @@ function daysUntil(r: Reminder): number {
     const target = new Date(r.event_date)
     return Math.round((target.getTime() - today.getTime()) / 86400000)
   }
+  if (r.due_date) {
+    const target = new Date(r.due_date)
+    return Math.round((target.getTime() - today.getTime()) / 86400000)
+  }
   return 999
 }
 
 function dateLabel(r: Reminder): string {
   if (r.type === 'anniversary' && r.month && r.day) return `매년 ${r.month}월 ${r.day}일`
+  if (r.type === 'todo') return r.due_date ? `마감 ${r.due_date.replace(/-/g, '/')}` : '마감일 없음'
   if (r.event_date) return r.event_date.replace(/-/g, '/')
   return ''
 }
@@ -241,7 +248,7 @@ export default function Home() {
   const [authError, setAuthError] = useState('')
   const [reminders, setReminders] = useState<Reminder[]>([])
   const [view, setView] = useState<View>('list')
-  const [filterType, setFilterType] = useState<'all' | 'anniversary' | 'event'>('all')
+  const [filterType, setFilterType] = useState<'all' | 'anniversary' | 'event' | 'todo'>('all')
   const [loading, setLoading] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
@@ -284,6 +291,11 @@ export default function Home() {
     if (form.type === 'anniversary') {
       body.month = parseInt(form.month)
       body.day = parseInt(form.day)
+    } else if (form.type === 'todo') {
+      const due = new Date()
+      due.setMonth(due.getMonth() + 3)
+      body.due_date = due.toISOString().split('T')[0]
+      body.interval_days = 5
     } else {
       body.event_date = form.event_date
     }
@@ -378,10 +390,10 @@ export default function Home() {
               onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
               className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300" />
             <div className="flex gap-2">
-              {(['anniversary', 'event'] as const).map(t => (
+              {(['anniversary', 'event', 'todo'] as const).map(t => (
                 <button key={t} type="button" onClick={() => setForm(f => ({ ...f, type: t }))}
-                  className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${form.type === t ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500'}`}>
-                  {t === 'anniversary' ? '🔁 기념일' : '📅 일정'}
+                  className={`flex-1 py-2 rounded-xl text-xs font-medium transition-colors ${form.type === t ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                  {t === 'anniversary' ? '🔁 기념일' : t === 'event' ? '📅 일정' : '✅ 할 일'}
                 </button>
               ))}
             </div>
@@ -394,6 +406,8 @@ export default function Home() {
                   onChange={e => setForm(f => ({ ...f, day: e.target.value }))}
                   className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300" />
               </div>
+            ) : form.type === 'todo' ? (
+              <p className="text-xs text-gray-400 bg-gray-50 rounded-xl px-4 py-3">📅 마감일은 등록일 기준 3달 후로 자동 설정돼요.</p>
             ) : (
               <input required type="date" value={form.event_date}
                 onChange={e => setForm(f => ({ ...f, event_date: e.target.value }))}
@@ -421,10 +435,10 @@ export default function Home() {
         {view === 'list' && (
           <>
             <div className="flex gap-2 mb-4">
-              {(['all', 'anniversary', 'event'] as const).map(t => (
+              {(['all', 'anniversary', 'event', 'todo'] as const).map(t => (
                 <button key={t} onClick={() => setFilterType(t)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterType === t ? 'bg-indigo-500 text-white' : 'bg-white text-gray-400 shadow-sm'}`}>
-                  {t === 'all' ? '전체' : t === 'anniversary' ? '🔁 기념일' : '📅 일정'}
+                  {t === 'all' ? '전체' : t === 'anniversary' ? '🔁 기념일' : t === 'event' ? '📅 일정' : '✅ 할 일'}
                 </button>
               ))}
             </div>
