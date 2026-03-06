@@ -70,6 +70,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
+  // /list
+  if (text === '/list') {
+    const { data: reminders } = await supabase
+      .from('reminders')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: true })
+
+    if (!reminders || reminders.length === 0) {
+      await sendMessage(chatId, '등록된 리마인더가 없어요.\n/add 로 등록해보세요!')
+      return NextResponse.json({ ok: true })
+    }
+
+    const lines = reminders.map((r: any, i: number) => {
+      const typeLabel = r.type === 'anniversary' ? '🔁 기념일' : '📅 일정'
+      const dateLabel =
+        r.type === 'anniversary'
+          ? `매년 ${r.month}월 ${r.day}일`
+          : r.event_date
+      const importanceLabel = r.importance === 'high' ? '⭐ 중요' : '일반'
+      return `${i + 1}. ${r.title}\n   ${typeLabel} | ${dateLabel} | ${importanceLabel}`
+    })
+
+    await sendMessage(chatId, `📋 리마인더 목록\n\n${lines.join('\n\n')}`)
+    return NextResponse.json({ ok: true })
+  }
+
   // /add 시작
   if (text === '/add') {
     await setSession(chatId, 'select_type', {})
