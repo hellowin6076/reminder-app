@@ -302,6 +302,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
+  // step: save_todo
+  if (step === 'save_todo') {
+    const due = new Date()
+    due.setMonth(due.getMonth() + 3)
+    const dueDate = due.toISOString().split('T')[0]
+
+    await supabase.from('reminders').insert({
+      user_id: user.id,
+      title: data.title,
+      type: 'todo',
+      importance: 'normal',
+      due_date: dueDate,
+      interval_days: 5,
+    })
+
+    await clearSession(chatId)
+    await sendMessage(
+      chatId,
+      `✅ 등록 완료!\n\n` +
+      `📌 ${data.title} (할 일)\n` +
+      `📅 마감: ${dueDate}\n` +
+      `🔔 5일마다 알림\n\n완료했으면 /done 으로 처리해주세요.`
+    )
+    return NextResponse.json({ ok: true })
+  }
+
   // step: select_type (add)
   if (step === 'select_type') {
     if (text === '1') {
@@ -321,7 +347,7 @@ export async function POST(req: NextRequest) {
 
   // step: input_title
   if (step === 'input_title') {
-    const nextStep = data.type === 'anniversary' ? 'input_month_day' : data.type === 'todo' ? 'select_importance' : 'input_date'
+    const nextStep = data.type === 'anniversary' ? 'input_month_day' : data.type === 'todo' ? 'save_todo' : 'input_date'
     await setSession(chatId, nextStep, {
       ...data,
       title: text,
@@ -329,7 +355,7 @@ export async function POST(req: NextRequest) {
     if (data.type === 'anniversary') {
       await sendMessage(chatId, '날짜를 입력해주세요. (MM/DD 형식)\n예: 03/15')
     } else if (data.type === 'todo') {
-      await sendMessage(chatId, '중요도를 선택해주세요.\n\n1. 중요 (1달 전부터 알림)\n2. 일반 (1주일 전부터 알림)')
+      // 바로 저장
     } else {
       await sendMessage(chatId, '날짜를 입력해주세요. (YYYY/MM/DD 형식)\n예: 2026/05/10')
     }
