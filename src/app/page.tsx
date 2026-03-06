@@ -1,65 +1,385 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { useState, useEffect, useCallback } from 'react'
+
+type Reminder = {
+  id: string
+  title: string
+  type: 'anniversary' | 'event'
+  importance: 'high' | 'normal'
+  month?: number
+  day?: number
+  event_date?: string
+  memo?: string
+  created_at: string
+}
+
+type View = 'list' | 'add' | 'calendar'
+
+// ── 날짜 유틸 ──────────────────────────────────────────
+function daysUntil(r: Reminder): number {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  if (r.type === 'anniversary' && r.month && r.day) {
+    let target = new Date(today.getFullYear(), r.month - 1, r.day)
+    if (target < today) target = new Date(today.getFullYear() + 1, r.month - 1, r.day)
+    return Math.round((target.getTime() - today.getTime()) / 86400000)
+  }
+  if (r.event_date) {
+    const target = new Date(r.event_date)
+    return Math.round((target.getTime() - today.getTime()) / 86400000)
+  }
+  return 999
+}
+
+function dateLabel(r: Reminder): string {
+  if (r.type === 'anniversary' && r.month && r.day) return `매년 ${r.month}월 ${r.day}일`
+  if (r.event_date) return r.event_date.replace(/-/g, '/')
+  return ''
+}
+
+function daysLabel(d: number): string {
+  if (d === 0) return '오늘'
+  if (d < 0) return '지남'
+  return `D-${d}`
+}
+
+// ── 캘린더 ──────────────────────────────────────────────
+function CalendarView({ reminders }: { reminders: Reminder[] }) {
+  const [current, setCurrent] = useState(new Date())
+  const year = current.getFullYear()
+  const month = current.getMonth()
+  const firstDay = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const today = new Date()
+
+  function getRemindersForDay(day: number): Reminder[] {
+    return reminders.filter(r => {
+      if (r.type === 'anniversary') return r.month === month + 1 && r.day === day
+      if (r.event_date) {
+        const d = new Date(r.event_date)
+        return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day
+      }
+      return false
+    })
+  }
+
+  const cells = []
+  for (let i = 0; i < firstDay; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <button onClick={() => setCurrent(new Date(year, month - 1))} className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500">‹</button>
+        <span className="font-semibold text-gray-800">{year}년 {month + 1}월</span>
+        <button onClick={() => setCurrent(new Date(year, month + 1))} className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500">›</button>
+      </div>
+      <div className="grid grid-cols-7 mb-2">
+        {['일','월','화','수','목','금','토'].map(d => (
+          <div key={d} className="text-center text-xs text-gray-400 py-1">{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((day, i) => {
+          if (!day) return <div key={i} />
+          const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === day
+          const dayReminders = getRemindersForDay(day)
+          return (
+            <div key={i} className={`min-h-[56px] rounded-lg p-1 ${isToday ? 'bg-indigo-50 ring-1 ring-indigo-300' : 'hover:bg-gray-50'}`}>
+              <div className={`text-xs text-center mb-1 font-medium ${isToday ? 'text-indigo-600' : 'text-gray-600'}`}>{day}</div>
+              {dayReminders.slice(0, 2).map(r => (
+                <div key={r.id} className={`text-[10px] px-1 py-0.5 rounded truncate mb-0.5 ${r.type === 'anniversary' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}`}>
+                  {r.title}
+                </div>
+              ))}
+              {dayReminders.length > 2 && <div className="text-[10px] text-gray-400 text-center">+{dayReminders.length - 2}</div>}
+            </div>
+          )
+        })}
+      </div>
     </div>
-  );
+  )
+}
+
+// ── 메인 ────────────────────────────────────────────────
+export default function Home() {
+  const [authed, setAuthed] = useState(false)
+  const [password, setPassword] = useState('')
+  const [authError, setAuthError] = useState('')
+  const [reminders, setReminders] = useState<Reminder[]>([])
+  const [view, setView] = useState<View>('list')
+  const [filterType, setFilterType] = useState<'all' | 'anniversary' | 'event'>('all')
+  const [loading, setLoading] = useState(false)
+
+  // Add form state
+  const [form, setForm] = useState({
+    title: '', type: 'anniversary', importance: 'normal',
+    month: '', day: '', event_date: '', memo: ''
+  })
+
+  const fetchReminders = useCallback(async () => {
+    const res = await fetch('/api/reminders')
+    if (res.ok) {
+      const data = await res.json()
+      setReminders(data)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/reminders').then(r => {
+      if (r.ok) { setAuthed(true); fetchReminders() }
+    })
+  }, [fetchReminders])
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    const res = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    })
+    setLoading(false)
+    if (res.ok) { setAuthed(true); fetchReminders() }
+    else setAuthError('비밀번호가 틀렸어요.')
+  }
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    const body: any = {
+      title: form.title,
+      type: form.type,
+      importance: form.importance,
+      memo: form.memo || null,
+    }
+    if (form.type === 'anniversary') {
+      body.month = parseInt(form.month)
+      body.day = parseInt(form.day)
+    } else {
+      body.event_date = form.event_date
+    }
+    await fetch('/api/reminders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    setForm({ title: '', type: 'anniversary', importance: 'normal', month: '', day: '', event_date: '', memo: '' })
+    setLoading(false)
+    setView('list')
+    fetchReminders()
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('삭제할까요?')) return
+    await fetch('/api/reminders', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    fetchReminders()
+  }
+
+  const filtered = reminders
+    .filter(r => filterType === 'all' || r.type === filterType)
+    .sort((a, b) => daysUntil(a) - daysUntil(b))
+
+  // ── 로그인 화면 ──
+  if (!authed) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-8">
+            <div className="text-4xl mb-3">🔔</div>
+            <h1 className="text-2xl font-bold text-gray-800">Reminder</h1>
+            <p className="text-gray-400 text-sm mt-1">개인 리마인더 앱</p>
+          </div>
+          <form onSubmit={handleLogin} className="bg-white rounded-2xl shadow-sm p-6 space-y-4">
+            <input
+              type="password"
+              placeholder="비밀번호"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+            {authError && <p className="text-red-500 text-xs">{authError}</p>}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-indigo-500 text-white rounded-xl py-3 text-sm font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50"
+            >
+              {loading ? '...' : '입장'}
+            </button>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
+  // ── 메인 화면 ──
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-lg mx-auto px-4 py-8">
+
+        {/* 헤더 */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">🔔 Reminder</h1>
+            <p className="text-gray-400 text-xs mt-0.5">{reminders.length}개의 리마인더</p>
+          </div>
+          <button
+            onClick={() => setView(view === 'add' ? 'list' : 'add')}
+            className="bg-indigo-500 text-white rounded-xl px-4 py-2 text-sm font-medium hover:bg-indigo-600 transition-colors"
+          >
+            {view === 'add' ? '취소' : '+ 등록'}
+          </button>
+        </div>
+
+        {/* 탭 */}
+        <div className="flex gap-2 mb-6">
+          {(['list', 'calendar'] as const).map(v => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${view === v ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
+            >
+              {v === 'list' ? '목록' : '캘린더'}
+            </button>
+          ))}
+        </div>
+
+        {/* 등록 폼 */}
+        {view === 'add' && (
+          <form onSubmit={handleAdd} className="bg-white rounded-2xl shadow-sm p-6 mb-6 space-y-4">
+            <h2 className="font-semibold text-gray-700">새 리마인더</h2>
+
+            <input
+              required
+              placeholder="제목"
+              value={form.title}
+              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+
+            <div className="flex gap-2">
+              {(['anniversary', 'event'] as const).map(t => (
+                <button
+                  key={t} type="button"
+                  onClick={() => setForm(f => ({ ...f, type: t }))}
+                  className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${form.type === t ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500'}`}
+                >
+                  {t === 'anniversary' ? '🔁 기념일' : '📅 일정'}
+                </button>
+              ))}
+            </div>
+
+            {form.type === 'anniversary' ? (
+              <div className="flex gap-2">
+                <input
+                  required type="number" min="1" max="12" placeholder="월"
+                  value={form.month}
+                  onChange={e => setForm(f => ({ ...f, month: e.target.value }))}
+                  className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
+                />
+                <input
+                  required type="number" min="1" max="31" placeholder="일"
+                  value={form.day}
+                  onChange={e => setForm(f => ({ ...f, day: e.target.value }))}
+                  className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
+                />
+              </div>
+            ) : (
+              <input
+                required type="date"
+                value={form.event_date}
+                onChange={e => setForm(f => ({ ...f, event_date: e.target.value }))}
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
+              />
+            )}
+
+            <div className="flex gap-2">
+              {(['normal', 'high'] as const).map(imp => (
+                <button
+                  key={imp} type="button"
+                  onClick={() => setForm(f => ({ ...f, importance: imp }))}
+                  className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${form.importance === imp ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500'}`}
+                >
+                  {imp === 'high' ? '⭐ 중요' : '일반'}
+                </button>
+              ))}
+            </div>
+
+            <input
+              placeholder="메모 (선택)"
+              value={form.memo}
+              onChange={e => setForm(f => ({ ...f, memo: e.target.value }))}
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+
+            <button
+              type="submit" disabled={loading}
+              className="w-full bg-indigo-500 text-white rounded-xl py-3 text-sm font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50"
+            >
+              {loading ? '등록 중...' : '등록'}
+            </button>
+          </form>
+        )}
+
+        {/* 목록 */}
+        {view === 'list' && (
+          <>
+            <div className="flex gap-2 mb-4">
+              {(['all', 'anniversary', 'event'] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setFilterType(t)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterType === t ? 'bg-indigo-500 text-white' : 'bg-white text-gray-400 shadow-sm'}`}
+                >
+                  {t === 'all' ? '전체' : t === 'anniversary' ? '🔁 기념일' : '📅 일정'}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-3">
+              {filtered.length === 0 && (
+                <div className="text-center text-gray-400 text-sm py-12">리마인더가 없어요</div>
+              )}
+              {filtered.map(r => {
+                const d = daysUntil(r)
+                return (
+                  <div key={r.id} className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0 ${d === 0 ? 'bg-rose-100 text-rose-600' : d <= 7 ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-500'}`}>
+                      {daysLabel(d)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-gray-800 text-sm truncate">{r.title}</span>
+                        {r.importance === 'high' && <span className="text-xs">⭐</span>}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-0.5">{dateLabel(r)}</div>
+                      {r.memo && <div className="text-xs text-gray-400 truncate mt-0.5">📝 {r.memo}</div>}
+                    </div>
+                    <button
+                      onClick={() => handleDelete(r.id)}
+                      className="text-gray-300 hover:text-red-400 transition-colors text-lg flex-shrink-0"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+
+        {/* 캘린더 */}
+        {view === 'calendar' && (
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <CalendarView reminders={reminders} />
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
