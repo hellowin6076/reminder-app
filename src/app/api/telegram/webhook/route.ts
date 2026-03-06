@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
       `명령어 목록:\n` +
       `/add - 리마인더 등록\n` +
       `/list - 리마인더 목록\n` +
+      `/month - 월별 일정 확인\n` +
       `/delete - 리마인더 삭제\n` +
       `/cancel - 취소`
     )
@@ -81,6 +82,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
+  // /month
+  if (text === '/month') {
+    await setSession(chatId, 'month_select', {})
+    await sendMessage(chatId, '몇 월을 볼까요? (1-12)')
+    return NextResponse.json({ ok: true })
+  }
+
   // /add
   if (text === '/add') {
     await setSession(chatId, 'select_type', {})
@@ -96,6 +104,55 @@ export async function POST(req: NextRequest) {
 
   const step = session.step
   const data = session.data || {}
+
+  // step: month_select
+  if (step === 'month_select') {
+    const month = parseInt(text)
+    if (isNaN(month) || month < 1 || month > 12) {
+      await sendMessage(chatId, '1~12 사이의 숫자를 입력해주세요.')
+      return NextResponse.json({ ok: true })
+    }
+
+    const { data: allReminders } = await supabase
+      .from('reminders')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: true })
+
+    await clearSession(chatId)
+
+    const anniversaries = (allReminders || []).filter((r: any) => r.type === 'anniversary' && r.month === month)
+    const events = (allReminders || []).filter((r: any) => {
+      if (r.type !== 'event' || !r.event_date) return false
+      return new Date(r.event_date).getMonth() + 1 === month
+    })
+
+    if (anniversaries.length === 0 && events.length === 0) {
+      await sendMessage(chatId, `${month}월에 등록된 일정이 없어요.`)
+      return NextResponse.json({ ok: true })
+    }
+
+    let msg = `📅 ${month}월 일정\n`
+
+    if (anniversaries.length > 0) {
+      msg += '\n🔁 기념일\n'
+      anniversaries.forEach((r: any) => {
+        const imp = r.importance === 'high' ? ' ⭐' : ''
+        msg += `• ${r.title} (${r.month}월 ${r.day}일)${imp}\n`
+      })
+    }
+
+    if (events.length > 0) {
+      msg += '\n📅 일정\n'
+      events.forEach((r: any) => {
+        const imp = r.importance === 'high' ? ' ⭐' : ''
+        msg += `• ${r.title} (${r.event_date})${imp}\n`
+      })
+    }
+
+    await sendMessage(chatId, msg)
+    return NextResponse.json({ ok: true })
+  }
 
   // step: list_select_type
   if (step === 'list_select_type') {
