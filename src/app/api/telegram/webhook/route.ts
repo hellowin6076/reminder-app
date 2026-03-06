@@ -312,6 +312,50 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
+  // step: todo_select_due
+  if (step === 'todo_select_due') {
+    if (text !== '1' && text !== '2') {
+      await sendMessage(chatId, '1 또는 2를 입력해주세요.')
+      return NextResponse.json({ ok: true })
+    }
+    const due = new Date()
+    if (text === '1') due.setMonth(due.getMonth() + 3)
+    else due.setFullYear(due.getFullYear() + 1)
+    const dueDate = due.toISOString().split('T')[0]
+
+    await setSession(chatId, 'todo_select_interval', { ...data, due_date: dueDate })
+    await sendMessage(chatId, `알림 주기를 설정해주세요. (기본: 5일)\n숫자로 입력해주세요. 예: 3`)
+    return NextResponse.json({ ok: true })
+  }
+
+  // step: todo_select_interval
+  if (step === 'todo_select_interval') {
+    const interval = parseInt(text)
+    if (isNaN(interval) || interval < 1) {
+      await sendMessage(chatId, '1 이상의 숫자를 입력해주세요.')
+      return NextResponse.json({ ok: true })
+    }
+
+    await supabase.from('reminders').insert({
+      user_id: user.id,
+      title: data.title,
+      type: 'todo',
+      importance: 'normal',
+      due_date: data.due_date,
+      interval_days: interval,
+    })
+
+    await clearSession(chatId)
+    await sendMessage(
+      chatId,
+      `✅ 등록 완료!\n\n` +
+      `📌 ${data.title} (할 일)\n` +
+      `📅 마감: ${data.due_date}\n` +
+      `🔔 ${interval}일마다 알림\n\n완료했으면 /done 으로 처리해주세요.`
+    )
+    return NextResponse.json({ ok: true })
+  }
+
   // step: save_todo
   if (step === 'save_todo') {
     const due = new Date()
@@ -357,29 +401,10 @@ export async function POST(req: NextRequest) {
 
   // step: input_title
   if (step === 'input_title') {
-    // 할 일은 제목 입력 후 바로 저장
+    // 할 일은 마감일 선택으로
     if (data.type === 'todo') {
-      const due = new Date()
-      due.setMonth(due.getMonth() + 3)
-      const dueDate = due.toISOString().split('T')[0]
-
-      await supabase.from('reminders').insert({
-        user_id: user.id,
-        title: text,
-        type: 'todo',
-        importance: 'normal',
-        due_date: dueDate,
-        interval_days: 5,
-      })
-
-      await clearSession(chatId)
-      await sendMessage(
-        chatId,
-        `✅ 등록 완료!\n\n` +
-        `📌 ${text} (할 일)\n` +
-        `📅 마감: ${dueDate}\n` +
-        `🔔 5일마다 알림\n\n완료했으면 /done 으로 처리해주세요.`
-      )
+      await setSession(chatId, 'todo_select_due', { ...data, title: text })
+      await sendMessage(chatId, '마감일을 설정해주세요.\n\n1. 3달 후\n2. 1년 후')
       return NextResponse.json({ ok: true })
     }
 
